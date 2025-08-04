@@ -95,7 +95,8 @@ public class FishingRodController : MonoBehaviour
     {
         currentState = RodState.Reeling;
         bitePromptPanel.SetActive(false);
-        fishingMinigameManager.StartMinigame();
+        var randomFish = FishManager.allFish[Random.Range(0, FishManager.allFish.Count)];
+        fishingMinigameManager.StartMinigame(randomFish);
     }
     
     private void CancelFishing()
@@ -105,8 +106,26 @@ public class FishingRodController : MonoBehaviour
         fishingRodLine.gameObject.SetActive(false);
     }
 
-    public void OnMinigameFinished()
+    public void OnMinigameFinished(bool wasSuccesful, float secondsStruggled)
     {
+        if (wasSuccesful)
+        {
+            // Handle successful catch
+            var caughtFish = new FishInstance(fishingMinigameManager.currentFishData, secondsStruggled);
+            //InventoryManager.AddFishToInventory(caughtFish);
+            Debug.Log($"Caught {caughtFish.baseData.fishName} with quality {caughtFish.fishQuality}");
+        }
+        else
+        {
+            // Handle failed catch
+            Debug.Log("Failed to catch the fish.");
+        }
+
+        // Reset state after minigame
+        currentState = RodState.Idle;
+        bitePromptPanel.SetActive(false);
+        fishingRodLine.gameObject.SetActive(false);
+        
         StartFishingSequence();
     }
 }

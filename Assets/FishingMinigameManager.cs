@@ -20,6 +20,7 @@ public class FishingMinigameManager : MonoBehaviour
     [SerializeField] private float progressDrainRate = 0.2f;
 
     // Private state variables
+    private float secondsStruggled; // Seconds the fish has not been catching
     private float fishPosition;
     private float fishDestination;
     private float fishMoveTimer;
@@ -29,6 +30,12 @@ public class FishingMinigameManager : MonoBehaviour
     private float catchBarVelocity;
 
     private float currentProgress = 0.25f; // Start with a bit of progress
+    
+    public FishData currentFishData;
+    private float calculatedGainRate;
+    private float calculatedDrainRate;
+    private float calculatedSpeed;
+    private float calculatedTimerMulti;
 
     private void Start()
     {
@@ -37,11 +44,14 @@ public class FishingMinigameManager : MonoBehaviour
     }
 
     // This is the public method to call from your other scripts
-    public void StartMinigame(/* You can pass FishData here to change difficulty */)
+    public void StartMinigame(FishData hookedFishData)
     {
+        currentFishData = hookedFishData;
+        CalculateFishParameters(currentFishData);
         fishingMinigameUI.SetActive(true);
         currentProgress = 0.25f;
         catchBarPosition = 0;
+        secondsStruggled = 0;
     }
 
     void Update()
@@ -60,13 +70,13 @@ public class FishingMinigameManager : MonoBehaviour
         fishMoveTimer -= Time.deltaTime;
         if (fishMoveTimer < 0f)
         {
-            fishMoveTimer = Random.Range(0.5f, 1.5f) * fishTimerMulti;
+            fishMoveTimer = Random.Range(0.5f, 1.5f) * calculatedTimerMulti;
             float trackHeight = track.rect.height;
             fishDestination = Random.Range(0, trackHeight);
         }
 
         // Move fish towards destination
-        fishPosition = Mathf.Lerp(fishPosition, fishDestination, Time.deltaTime * fishSpeed * 0.1f);
+        fishPosition = Mathf.Lerp(fishPosition, fishDestination, Time.deltaTime * calculatedSpeed * 0.1f);
 
         // Update the fish icon's actual position on the UI
         fishIcon.anchoredPosition = new Vector2(fishIcon.anchoredPosition.x, fishPosition - track.rect.height / 2);
@@ -109,12 +119,13 @@ public class FishingMinigameManager : MonoBehaviour
         if (catchBarMin <= fishPosition && fishPosition <= catchBarMax)
         {
             // We are catching the fish!
-            currentProgress += progressGainRate * Time.deltaTime;
+            currentProgress += calculatedGainRate * Time.deltaTime;
         }
         else
         {
             // We are not catching the fish
-            currentProgress -= progressDrainRate * Time.deltaTime;
+            currentProgress -= calculatedDrainRate * Time.deltaTime;
+            secondsStruggled += Time.deltaTime;
         }
         
         // Clamp progress between 0 and 1
@@ -134,12 +145,20 @@ public class FishingMinigameManager : MonoBehaviour
         }
     }
 
+    void CalculateFishParameters(FishData hookedFishData)
+    {
+        calculatedGainRate = 0.1f / hookedFishData.fishWeight;
+        calculatedDrainRate = hookedFishData.fishWeight;
+        calculatedSpeed = hookedFishData.fishAgility * 100f;
+        calculatedTimerMulti = 1.1f / hookedFishData.fishAgility;
+    }
+
     private void Win()
     {
         Debug.Log("FISH CAUGHT!");
         // Add fish to inventory, give XP, etc.
         fishingMinigameUI.SetActive(false); // Hide the minigame panel
-        fishingRodController.OnMinigameFinished(); // Reset the rod state
+        fishingRodController.OnMinigameFinished(true, secondsStruggled); // Reset the rod state
     }
 
     private void Lose()
@@ -147,6 +166,6 @@ public class FishingMinigameManager : MonoBehaviour
         Debug.Log("Fish got away...");
         // Play a "failure" sound, etc.
         fishingMinigameUI.SetActive(false); // Hide the minigame panel
-        fishingRodController.OnMinigameFinished(); // Reset the rod state
+        fishingRodController.OnMinigameFinished(false, 0); // Reset the rod state
     }
 }
