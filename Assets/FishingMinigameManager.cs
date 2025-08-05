@@ -1,57 +1,92 @@
 using UnityEngine;
 using UnityEngine.UI;
+using System.Collections;
 
 public class FishingMinigameManager : MonoBehaviour
 {
     [SerializeField] private FishingRodController fishingRodController;
-    
+
     [Header("Game Elements")]
-    public GameObject fishingMinigameUI; // The UI panel for the minigame
+    public GameObject fishingMinigameUI;
     public Slider progressBar;
     public RectTransform fishIcon;
     public RectTransform catchBar;
-    public RectTransform track; // The background track
+    public RectTransform track;
 
-    [Header("Game Settings")]
-    [SerializeField] private float fishSpeed = 300f;
+    [Header("Base Game Settings")]
     [SerializeField] private float gravity = 150f;
     [SerializeField] private float catchPower = 100f;
-    [SerializeField] private float progressGainRate = 0.5f;
-    [SerializeField] private float progressDrainRate = 0.2f;
 
-    // Private state variables
-    private float secondsStruggled; // Seconds the fish has not been catching
+    [Header("Quality Damage Settings")]
+    [SerializeField] private float damageInterval = 0.5f;
+    [SerializeField] private float qualityReductionPercentPerHit = 10;
+    
+    [Header("Quality Effect Settings")]
+    [SerializeField] private float minFishSpeedFactor = 0.25f;
+    [SerializeField] private float maxMoveTimerDelay = 1.5f;
+
+    private float fishQuality;
+    private float fishSpeed;
+    private float fishMoveTimer;
+    private float progressGainRate;
+    private float progressDrainRate;
+    private float initialFishProgress;
+
+    private float secondsStruggled;
     private float fishPosition;
     private float fishDestination;
-    private float fishMoveTimer;
-    private float fishTimerMulti = 2f; // How quickly the fish changes direction
-
+    private float fishMoveTimerTicker;
     private float catchBarPosition;
     private float catchBarVelocity;
+    private float currentProgress;
 
-    private float currentProgress = 0.25f; // Start with a bit of progress
-    
     public FishData currentFishData;
-    private float calculatedGainRate;
-    private float calculatedDrainRate;
-    private float calculatedSpeed;
-    private float calculatedTimerMulti;
+    private MinigameParameters currentParams;
+
+    private Image fishImage;
+    private Color originalFishColor;
+    private Coroutine hurtRoutine;
+
+    private void Awake()
+    {
+        fishImage = fishIcon.GetComponent<Image>();
+        originalFishColor = fishImage.color;
+    }
 
     private void Start()
     {
-        // Deactivate on start, to be activated by another script
         fishingMinigameUI.SetActive(false);
     }
 
-    // This is the public method to call from your other scripts
-    public void StartMinigame(FishData hookedFishData)
+    public void StartMinigame(FishData hookedFishData, MinigameParameters parameters)
     {
         currentFishData = hookedFishData;
-        CalculateFishParameters(currentFishData);
+        currentParams = parameters;
+
+        fishQuality = currentParams.FinalQuality;
+        fishSpeed = currentParams.FinalFishSpeed;
+        fishMoveTimer = currentParams.FinalFishMoveTimer;
+        progressGainRate = currentParams.FinalProgressGainRate;
+        progressDrainRate = currentParams.FinalProgressDrainRate;
+        initialFishProgress = currentParams.FinalInitialFishProgress;
+        currentProgress = initialFishProgress;
+        catchBar.GetComponent<RectTransform>().sizeDelta = new Vector2(catchBar.GetComponent<RectTransform>().sizeDelta.x, currentParams.FinalCatchBarSize);
+
         fishingMinigameUI.SetActive(true);
-        currentProgress = 0.25f;
-        catchBarPosition = 0;
+
+        catchBarPosition = 0f;
+        catchBarVelocity = 0f;
+        fishPosition = 0f;
+        fishDestination = 0f;
+        fishMoveTimerTicker = -1;
+
+        UpdateCatchBarVisuals();
+        UpdateFishPositionVisuals();
+
         secondsStruggled = 0;
+        fishImage.color = originalFishColor;
+
+        hurtRoutine = StartCoroutine(HurtFishRoutine());
     }
 
     void Update()
@@ -64,77 +99,94 @@ public class FishingMinigameManager : MonoBehaviour
         }
     }
 
+    private IEnumerator HurtFishRoutine()
+    {
+        while (true)
+        {
+            yield return new WaitForSeconds(damageInterval);
+
+            if (!IsFishInCatchBar())
+            {
+                float qualityReductionAmount = fishQuality * (qualityReductionPercentPerHit / 100f);
+                fishQuality -= qualityReductionAmount;
+                fishQuality = Mathf.Max(0, fishQuality);
+                StartCoroutine(FlashFishRed());
+            }
+        }
+    }
+
+    private IEnumerator FlashFishRed()
+    {
+        fishImage.color = Color.red;
+        float elapsedTime = 0f;
+        float fadeDuration = 0.4f;
+
+        while (elapsedTime < fadeDuration)
+        {
+            fishImage.color = Color.Lerp(Color.red, originalFishColor, elapsedTime / fadeDuration);
+            elapsedTime += Time.deltaTime;
+            yield return null;
+        }
+        fishImage.color = originalFishColor;
+    }
+
+    private bool IsFishInCatchBar()
+    {
+        float catchBarMin = catchBarPosition;
+        float catchBarMax = catchBarPosition + catchBar.rect.height;
+        return (catchBarMin <= fishPosition && fishPosition <= catchBarMax);
+    }
+
     private void UpdateFishPosition()
     {
-        // Make the fish move to a new random destination over time
-        fishMoveTimer -= Time.deltaTime;
-        if (fishMoveTimer < 0f)
+        float qualitySpeedFactor = minFishSpeedFactor + ((1f - minFishSpeedFactor) * fishQuality);
+        float effectiveSpeed = fishSpeed * qualitySpeedFactor;
+
+        float addedMoveDelay = maxMoveTimerDelay * (1f - fishQuality);
+        float effectiveMoveTimer = fishMoveTimer + addedMoveDelay;
+
+        fishMoveTimerTicker -= Time.deltaTime;
+        if (fishMoveTimerTicker < 0f)
         {
-            fishMoveTimer = Random.Range(0.5f, 1.5f) * calculatedTimerMulti;
+            fishMoveTimerTicker = effectiveMoveTimer;
             float trackHeight = track.rect.height;
             fishDestination = Random.Range(0, trackHeight);
         }
-
-        // Move fish towards destination
-        fishPosition = Mathf.Lerp(fishPosition, fishDestination, Time.deltaTime * calculatedSpeed * 0.1f);
-
-        // Update the fish icon's actual position on the UI
-        fishIcon.anchoredPosition = new Vector2(fishIcon.anchoredPosition.x, fishPosition - track.rect.height / 2);
+        fishPosition = Mathf.Lerp(fishPosition, fishDestination, Time.deltaTime * effectiveSpeed * 0.1f);
+        UpdateFishPositionVisuals();
     }
 
     private void UpdateCatchBar()
     {
-        // Player Input
         if (Input.GetMouseButton(0))
         {
             catchBarVelocity += catchPower * Time.deltaTime;
         }
-
-        // Apply Gravity
         catchBarVelocity -= gravity * Time.deltaTime;
-
-        // Update position based on velocity
         catchBarPosition += catchBarVelocity * Time.deltaTime;
-
-        // Clamp position to stay within the track
         float trackHeight = track.rect.height;
         catchBarPosition = Mathf.Clamp(catchBarPosition, 0, trackHeight - catchBar.rect.height);
-
-        // Reset velocity if hitting the top or bottom to prevent "sticking"
         if (catchBarPosition == 0 || catchBarPosition == trackHeight - catchBar.rect.height)
         {
             catchBarVelocity = 0;
         }
-
-        // Update the catch bar's actual position on the UI
-        catchBar.anchoredPosition = new Vector2(catchBar.anchoredPosition.x, catchBarPosition - track.rect.height / 2);
+        UpdateCatchBarVisuals();
     }
 
     private void UpdateProgress()
     {
-        // Check if the catch bar is over the fish
-        float catchBarMin = catchBarPosition;
-        float catchBarMax = catchBarPosition + catchBar.rect.height;
-
-        if (catchBarMin <= fishPosition && fishPosition <= catchBarMax)
+        if (IsFishInCatchBar())
         {
-            // We are catching the fish!
-            currentProgress += calculatedGainRate * Time.deltaTime;
+            currentProgress += progressGainRate * Time.deltaTime;
         }
         else
         {
-            // We are not catching the fish
-            currentProgress -= calculatedDrainRate * Time.deltaTime;
+            currentProgress -= progressDrainRate * Time.deltaTime;
             secondsStruggled += Time.deltaTime;
         }
-        
-        // Clamp progress between 0 and 1
         currentProgress = Mathf.Clamp01(currentProgress);
-
-        // Update the UI progress bar
         progressBar.value = currentProgress;
 
-        // Check for win/loss conditions
         if (currentProgress >= 1f)
         {
             Win();
@@ -145,27 +197,45 @@ public class FishingMinigameManager : MonoBehaviour
         }
     }
 
-    void CalculateFishParameters(FishData hookedFishData)
+    private void UpdateFishPositionVisuals()
     {
-        calculatedGainRate = 0.1f / hookedFishData.fishWeight;
-        calculatedDrainRate = hookedFishData.fishWeight;
-        calculatedSpeed = hookedFishData.fishAgility * 100f;
-        calculatedTimerMulti = 1.1f / hookedFishData.fishAgility;
+        fishIcon.anchoredPosition = new Vector2(fishIcon.anchoredPosition.x, fishPosition - track.rect.height / 2);
+    }
+
+    private void UpdateCatchBarVisuals()
+    {
+        catchBar.anchoredPosition = new Vector2(catchBar.anchoredPosition.x, catchBarPosition - track.rect.height / 2);
+    }
+
+    private void StopMinigame()
+    {
+        if (hurtRoutine != null)
+        {
+            StopCoroutine(hurtRoutine);
+        }
+        fishingMinigameUI.SetActive(false);
     }
 
     private void Win()
     {
-        Debug.Log("FISH CAUGHT!");
-        // Add fish to inventory, give XP, etc.
-        fishingMinigameUI.SetActive(false); // Hide the minigame panel
-        fishingRodController.OnMinigameFinished(true, secondsStruggled); // Reset the rod state
+        StopMinigame();
+        fishingRodController.OnMinigameFinished(true, fishQuality);
     }
 
     private void Lose()
     {
-        Debug.Log("Fish got away...");
-        // Play a "failure" sound, etc.
-        fishingMinigameUI.SetActive(false); // Hide the minigame panel
-        fishingRodController.OnMinigameFinished(false, 0); // Reset the rod state
+        StopMinigame();
+        fishingRodController.OnMinigameFinished(false, 0);
     }
+}
+
+public class MinigameParameters
+{
+    public float FinalQuality;
+    public float FinalFishSpeed;
+    public float FinalFishMoveTimer;
+    public float FinalProgressGainRate;
+    public float FinalProgressDrainRate;
+    public float FinalInitialFishProgress;
+    public float FinalCatchBarSize;
 }

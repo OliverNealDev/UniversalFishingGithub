@@ -1,21 +1,27 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class InventoryManager : MonoBehaviour
 {
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
-    {
-        
-    }
+    public static InventoryManager instance;
+    public static List<FishInstance> fishInventory;
 
-    // Update is called once per frame
-    void Update()
+    private void Awake()
     {
-        
+        if (instance == null)
+        {
+            instance = this;
+            DontDestroyOnLoad(this.gameObject);
+            fishInventory = new List<FishInstance>();
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
     }
-
+    
     public void AddFishToInventory(FishInstance caughtFish)
     {
-        
+        fishInventory.Add(caughtFish);
     }
 }

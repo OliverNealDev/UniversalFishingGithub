@@ -703,6 +703,7 @@ MonoBehaviour:
   fishingRodLine: {fileID: 1265581113}
   biteChancePerSecond: 0.2
   biteWindowDuration: 1
+  equippedRod: {fileID: 11400000, guid: 7d266c6f64b15dd4daf1d21dcf58f814, type: 2}
 --- !u!1 &635168422
 GameObject:
   m_ObjectHideFlags: 0
@@ -2104,11 +2105,12 @@ MonoBehaviour:
   fishIcon: {fileID: 1012117353}
   catchBar: {fileID: 343281285}
   track: {fileID: 1514007811}
-  fishSpeed: 15
   gravity: 1000
   catchPower: 2000
-  progressGainRate: 0.2
-  progressDrainRate: 0.1
+  damageInterval: 1
+  qualityReductionPercentPerHit: 5
+  minFishSpeedFactor: 0.25
+  maxMoveTimerDelay: 1.5
   currentFishData: {fileID: 0}
 --- !u!1 &2145840332
 GameObject:
